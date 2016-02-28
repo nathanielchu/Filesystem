@@ -1091,9 +1091,8 @@ ospfs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *
 	// If the user is writing past the end of the file, change the file's
 	// size to accomodate the request.  (Use change_size().)
 	/* EXERCISE: Your code here */
-	size_t remaining = oi->oi_size - *f_pos;
-	size_t want_size = remaining + count;
-	if (want_size > 0) {
+	size_t want_size = *f_pos + count;
+	if (want_size > oi->oi_size) {
 		change_size(oi, want_size);
 	}
 
@@ -1115,7 +1114,14 @@ ospfs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *
 		// read user space.
 		// Keep track of the number of bytes moved in 'n'.
 		/* EXERCISE: Your code here */
-		n = count;
+		// Offset data pointer.
+		data += (*f_pos % OSPFS_BLKSIZE);
+		// Remaining bytes in this block.
+		n = OSPFS_BLKSIZE - (*f_pos % OSPFS_BLKSIZE);
+		// Don't write more than requested.
+		if (n > count - amount) {
+			n = count - amount;
+		}
 		if (copy_from_user(data, buffer, n) != 0) {
 			retval = -EFAULT;
 			goto done;
@@ -1271,36 +1277,41 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 	ospfs_inode_t *dir_oi = ospfs_inode(dir->i_ino);
 	uint32_t entry_ino = 0;
 	/* EXERCISE: Your code here. */
+	// Check if the name exists already.
 	if(find_direntry(dir_oi, dentry->d_name.name, dentry->d_name.len) != NULL) {
 		return -EEXIST;
 	}
+	// Check name length.
 	if(dentry->d_name.len > OSPFS_MAXNAMELEN) {
 		return -ENAMETOOLONG;
 	}
-	uint32_t block_number = allocate_block();
-	if (block_number == 0) {
+	// Attempt to find/make empty directory entry.
+	ospfs_direntry_t *od = create_blank_direntry(dir_oi);
+	if (IS_ERR(od)) {
+		return PTR_ERR(od);
+	}
+	// Attempt to find empty inode.
+	ospfs_inode_t *oi;
+	for (entry_ino = 2; entry_ino < ospfs_super->os_ninodes; entry_ino++) {
+		oi = ospfs_inode(entry_ino);
+		if (oi->oi_nlink == 0) {
+			break;
+		}
+	}
+	if (entry_ino == ospfs_super->os_ninodes) {
 		return -ENOSPC;
 	}
-	ospfs_super->os_nblocks++;
-	struct file *filp;
-	uint32_t ino_number = ospfs_super->os_firstinob + ospfs_super->os_ninodes;
-	ospfs_super->os_ninodes++;
-	ospfs_inode_t *oi = ospfs_inode(ino_number);
+
 	oi->oi_size = 0;
 	oi->oi_ftype == OSPFS_FTYPE_REG;
 	oi->oi_nlink = 1;
 	oi->oi_mode = mode;
-	oi->oi_direct[0] = block_number;
-	filp->f_dentry->d_inode = oi;
-	filp->f_dentry->d_parent->d_inode = dir;
-	ospfs_direntry_t *od;
-	od->od_ino = ino_number;
+	od->od_ino = entry_ino;
 	int i;
-	for(i = 0; i < d_name.len; i++) {
+	for(i = 0; i < dentry->d_name.len; i++) {
 		od->od_name[i] = dentry->d_name.name[i];
 	}
 	
-	entry_ino = ino_number;
 	/* Execute this code after your function has successfully created the
 	   file.  Set entry_ino to the created file's inode number before
 	   getting here. */
