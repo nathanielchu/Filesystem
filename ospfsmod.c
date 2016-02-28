@@ -1083,10 +1083,19 @@ ospfs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *
 	// Support files opened with the O_APPEND flag.  To detect O_APPEND,
 	// use struct file's f_flags field and the O_APPEND bit.
 	/* EXERCISE: Your code here */
-
+	if(!(filp->f_mode & FMODE_WRITE) && !(filp->f_flags & O_APPEND)) {
+		retval = -EIO;
+		goto done;
+	}
+	
 	// If the user is writing past the end of the file, change the file's
 	// size to accomodate the request.  (Use change_size().)
 	/* EXERCISE: Your code here */
+	size_t remaining = oi->oi_size - *f_pos;
+	size_t want_size = remaining + count;
+	if (want_size > 0) {
+		change_size(oi, want_size);
+	}
 
 	// Copy data block by block
 	while (amount < count && retval >= 0) {
@@ -1106,9 +1115,12 @@ ospfs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *
 		// read user space.
 		// Keep track of the number of bytes moved in 'n'.
 		/* EXERCISE: Your code here */
-		retval = -EIO; // Replace these lines
-		goto done;
-
+		n = count;
+		if (copy_from_user(data, buffer, n) != 0) {
+			retval = -EFAULT;
+			goto done;
+		}
+		
 		buffer += n;
 		amount += n;
 		*f_pos += n;
@@ -1259,8 +1271,36 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 	ospfs_inode_t *dir_oi = ospfs_inode(dir->i_ino);
 	uint32_t entry_ino = 0;
 	/* EXERCISE: Your code here. */
-	return -EINVAL; // Replace this line
-
+	if(find_direntry(dir_oi, dentry->d_name.name, dentry->d_name.len) != NULL) {
+		return -EEXIST;
+	}
+	if(dentry->d_name.len > OSPFS_MAXNAMELEN) {
+		return -ENAMETOOLONG;
+	}
+	uint32_t block_number = allocate_block();
+	if (block_number == 0) {
+		return -ENOSPC;
+	}
+	ospfs_super->os_nblocks++;
+	struct file *filp;
+	uint32_t ino_number = ospfs_super->os_firstinob + ospfs_super->os_ninodes;
+	ospfs_super->os_ninodes++;
+	ospfs_inode_t *oi = ospfs_inode(ino_number);
+	oi->oi_size = 0;
+	oi->oi_ftype == OSPFS_FTYPE_REG;
+	oi->oi_nlink = 1;
+	oi->oi_mode = mode;
+	oi->oi_direct[0] = block_number;
+	filp->f_dentry->d_inode = oi;
+	filp->f_dentry->d_parent->d_inode = dir;
+	ospfs_direntry_t *od;
+	od->od_ino = ino_number;
+	int i;
+	for(i = 0; i < d_name.len; i++) {
+		od->od_name[i] = dentry->d_name.name[i];
+	}
+	
+	entry_ino = ino_number;
 	/* Execute this code after your function has successfully created the
 	   file.  Set entry_ino to the created file's inode number before
 	   getting here. */

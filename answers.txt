@@ -16,9 +16,9 @@ Student ID:
 Email: 
 
 # Partner 2 (if you're working in a team)
-Name: 
-Student ID: 
-Email: 
+Name: Nathaniel Chu
+Student ID: 304449551
+Email: nathanielchu4@gmail.com
 
 # Extra credit problems
 #Extra credit problem: none
