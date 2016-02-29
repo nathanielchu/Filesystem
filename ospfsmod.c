@@ -1231,7 +1231,7 @@ create_blank_direntry(ospfs_inode_t *dir_oi)
 //
 //   Inputs: src_dentry   -- a pointer to the dentry for the source file.  This
 //                           file's inode contains the real data for the hard
-//                           linked filae.  The important elements are:
+//                           linked file.  The important elements are:
 //                             src_dentry->d_name.name
 //                             src_dentry->d_name.len
 //                             src_dentry->d_inode->i_ino
@@ -1257,7 +1257,29 @@ create_blank_direntry(ospfs_inode_t *dir_oi)
 static int
 ospfs_link(struct dentry *src_dentry, struct inode *dir, struct dentry *dst_dentry) {
 	/* EXERCISE: Your code here. */
-	return -EINVAL;
+	// Based on ospfs_create.
+	ospfs_inode_t *dir_oi = ospfs_inode(dir->i_ino);
+	/* EXERCISE: Your code here. */
+	// Check if the name exists already.
+	if (find_direntry(dir_oi, dst_dentry->d_name.name, dst_dentry->d_name.len) != NULL) {
+		return -EEXIST;
+	}
+	// Check name length.
+	if (dst_dentry->d_name.len > OSPFS_MAXNAMELEN) {
+		return -ENAMETOOLONG;
+	}
+	// Attempt to find/make empty directory entry.
+	ospfs_direntry_t *od = create_blank_direntry(dir_oi);
+	if (IS_ERR(od)) {
+		return PTR_ERR(od);
+	}
+
+	od->od_ino = src_dentry->d_inode->i_ino;
+	dst_dentry->d_inode = src_dentry->d_inode;
+	ospfs_inode_t *src_oi = ospfs_inode(od->od_ino);
+	(src_oi->oi_nlink)++;
+
+	return 0;
 }
 
 // ospfs_create
@@ -1372,7 +1394,42 @@ ospfs_symlink(struct inode *dir, struct dentry *dentry, const char *symname)
 	uint32_t entry_ino = 0;
 
 	/* EXERCISE: Your code here. */
-	return -EINVAL;
+	// Based on ospfs_create().
+	size_t symnamelen = strlen(symname);
+	// Check if the name exists already.
+	if(find_direntry(dir_oi, dentry->d_name.name, dentry->d_name.len) != NULL) {
+		return -EEXIST;
+	}
+	// Check name length.
+	if(dentry->d_name.len > OSPFS_MAXNAMELEN || symnamelen > OSPFS_MAXSYMLINKLEN) {
+		return -ENAMETOOLONG;
+	}
+	// Attempt to find/make empty directory entry.
+	ospfs_direntry_t *od = create_blank_direntry(dir_oi);
+	if (IS_ERR(od)) {
+		return PTR_ERR(od);
+	}
+	// Attempt to find empty inode.
+	ospfs_symlink_inode_t *oi = NULL;
+	for (entry_ino = 2; entry_ino < ospfs_super->os_ninodes; entry_ino++) {
+		oi = (ospfs_symlink_inode_t *) ospfs_inode(entry_ino);
+		if (oi->oi_nlink == 0) {
+			break;
+		}
+	}
+	if (entry_ino == ospfs_super->os_ninodes) {
+		return -ENOSPC;
+	}
+
+	oi->oi_size = symnamelen;
+	oi->oi_ftype = OSPFS_FTYPE_SYMLINK;
+	oi->oi_nlink = 1;
+	strcpy(oi->oi_symlink, symname);
+	od->od_ino = entry_ino;
+	int i;
+	for(i = 0; i < dentry->d_name.len; i++) {
+		od->od_name[i] = dentry->d_name.name[i];
+	}
 
 	/* Execute this code after your function has successfully created the
 	   file.  Set entry_ino to the created file's inode number before

@@ -11,9 +11,9 @@
 # information you'd like us to know, please add it at the end of the file.
 
 # Partner 1
-Name: 
-Student ID: 
-Email: 
+Name: Nathan Chou
+Student ID: 104453049
+Email: nchou0@ucla.edu
 
 # Partner 2 (if you're working in a team)
 Name: Nathaniel Chu
