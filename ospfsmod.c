@@ -1274,10 +1274,13 @@ ospfs_link(struct dentry *src_dentry, struct inode *dir, struct dentry *dst_dent
 		return PTR_ERR(od);
 	}
 
+	ospfs_inode_t *src_oi = ospfs_inode(src_dentry->d_inode->i_ino);
+	src_oi->oi_nlink++;
 	od->od_ino = src_dentry->d_inode->i_ino;
-	dst_dentry->d_inode = src_dentry->d_inode;
-	ospfs_inode_t *src_oi = ospfs_inode(od->od_ino);
-	(src_oi->oi_nlink)++;
+	int i;
+	for(i = 0; i < dst_dentry->d_name.len; i++) {
+		od->od_name[i] = dst_dentry->d_name.name[i];
+	}
 
 	return 0;
 }
