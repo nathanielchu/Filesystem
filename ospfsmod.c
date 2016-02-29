@@ -1277,10 +1277,7 @@ ospfs_link(struct dentry *src_dentry, struct inode *dir, struct dentry *dst_dent
 	ospfs_inode_t *src_oi = ospfs_inode(src_dentry->d_inode->i_ino);
 	src_oi->oi_nlink++;
 	od->od_ino = src_dentry->d_inode->i_ino;
-	int i;
-	for(i = 0; i < dst_dentry->d_name.len; i++) {
-		od->od_name[i] = dst_dentry->d_name.name[i];
-	}
+	strcpy(od->od_name, dst_dentry->d_name.name);
 
 	return 0;
 }
@@ -1350,10 +1347,7 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 	oi->oi_nlink = 1;
 	oi->oi_mode = mode;
 	od->od_ino = entry_ino;
-	int i;
-	for(i = 0; i < dentry->d_name.len; i++) {
-		od->od_name[i] = dentry->d_name.name[i];
-	}
+	strcpy(od->od_name, dentry->d_name.name);
 	
 	/* Execute this code after your function has successfully created the
 	   file.  Set entry_ino to the created file's inode number before
@@ -1429,10 +1423,7 @@ ospfs_symlink(struct inode *dir, struct dentry *dentry, const char *symname)
 	oi->oi_nlink = 1;
 	strcpy(oi->oi_symlink, symname);
 	od->od_ino = entry_ino;
-	int i;
-	for(i = 0; i < dentry->d_name.len; i++) {
-		od->od_name[i] = dentry->d_name.name[i];
-	}
+	strcpy(od->od_name, dentry->d_name.name);
 
 	/* Execute this code after your function has successfully created the
 	   file.  Set entry_ino to the created file's inode number before
