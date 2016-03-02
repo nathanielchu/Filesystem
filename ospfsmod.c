@@ -40,6 +40,17 @@ extern uint32_t ospfs_length;
 static ospfs_super_t * const ospfs_super =
 	(ospfs_super_t *) &ospfs_data[OSPFS_BLKSIZE];
 
+/*****************************************************************************
+ * Number of writes until crash
+ *
+ *   If 0, the file system has "crashed": every write to disk data should
+ *   silently fail.
+ *   If -1 (the default), OSPFS should act as usual.
+ *   If greater than 0, then the variable is decremented by 1 for every write
+ *   to a different block.
+ *****************************************************************************/
+int nwrites_to_crash = -1;
+
 static int change_size(ospfs_inode_t *oi, uint32_t want_size);
 static ospfs_direntry_t *find_direntry(ospfs_inode_t *dir_oi, const char *name, int namelen);
 
@@ -529,7 +540,32 @@ ospfs_unlink(struct inode *dirino, struct dentry *dentry)
 		return -ENOENT;
 	}
 
+	// Crash Testing
+	if (nwrites_to_crash == 0) {
+		return 0;
+	}
+	else if (nwrites_to_crash > 0) {
+		nwrites_to_crash--;
+	}
+	else if (nwrites_to_crash < -1) {
+		-EIO;
+	}
+
+	// Remove inode from directory entry
 	od->od_ino = 0;
+
+	// Crash Testing
+	if (nwrites_to_crash == 0) {
+		return 0;
+	}
+	else if (nwrites_to_crash > 0) {
+		nwrites_to_crash--;
+	}
+	else if (nwrites_to_crash < -1) {
+		-EIO;
+	}
+
+	// Decrement link count
 	oi->oi_nlink--;
 	return 0;
 }
@@ -570,6 +606,17 @@ allocate_block(void)
 		uint32_t *bitmapblock = ospfs_block(bitmapblocknumber);
 		int offset = i % OSPFS_BLKBITSIZE;
 		if (bitvector_test(bitmapblock, offset)) {
+			// Crash Testing
+			if (nwrites_to_crash == 0) {
+				return 0;
+			}
+			else if (nwrites_to_crash > 0) {
+				nwrites_to_crash--;
+			}
+			else if (nwrites_to_crash < -1) {
+				-EIO;
+			}
+
 			bitvector_clear(bitmapblock, offset);
 			return i;
 		}
@@ -600,6 +647,18 @@ free_block(uint32_t blockno)
 	uint32_t bitmapblocknumber = blockno/OSPFS_BLKBITSIZE + OSPFS_FREEMAP_BLK;
 	uint32_t *bitmapblock = ospfs_block(bitmapblocknumber);
 	int offset = blockno % OSPFS_BLKBITSIZE;
+
+	// Crash Testing
+	if (nwrites_to_crash == 0) {
+		return 0;
+	}
+	else if (nwrites_to_crash > 0) {
+		nwrites_to_crash--;
+	}
+	else if (nwrites_to_crash < -1) {
+		-EIO;
+	}
+
 	bitvector_set(bitmapblock, offset);
 }
 
@@ -666,7 +725,7 @@ indir_index(uint32_t b)
 }
 
 
-// int32_t indir_index(uint32_t b)
+// int32_t direct_index(uint32_t b)
 //	Returns the indirect block index for file block b.
 //
 // Inputs:  b -- the zero-based index of the file block
@@ -767,12 +826,34 @@ add_block(ospfs_inode_t *oi)
 		// Zero out all newly-allocated blocks.
 		int i;
 		for (i = 0; i < 3; i++) {
+				// Crash Testing
+			if (nwrites_to_crash == 0) {
+				return 0;
+			}
+			else if (nwrites_to_crash > 0) {
+				nwrites_to_crash--;
+			}
+			else if (nwrites_to_crash < -1) {
+				-EIO;
+			}
+
 			memset(ospfs_block(allocated[i]), 0, OSPFS_BLKSIZE);
 		}
 
 		// Determine indirect2, the "parent" array of indirect blocks.
 		if (c >= 0) {
 			if (allocated[2] > 0) {
+				// Crash Testing
+				if (nwrites_to_crash == 0) {
+					return 0;
+				}
+				else if (nwrites_to_crash > 0) {
+					nwrites_to_crash--;
+				}
+				else if (nwrites_to_crash < -1) {
+					-EIO;
+				}
+
 				oi->oi_indirect2 = allocated[2];
 			}
 			// If there is an indirect2 block, point inside it.
@@ -794,6 +875,17 @@ add_block(ospfs_inode_t *oi)
 		}
 		// There definitely exists a direct block.
 		indirect[a] = allocated[0];
+
+		// Crash Testing
+		if (nwrites_to_crash == 0) {
+			return 0;
+		}
+		else if (nwrites_to_crash > 0) {
+			nwrites_to_crash--;
+		}
+		else if (nwrites_to_crash < -1) {
+			-EIO;
+		}
 
 		// Update file size.
 		oi->oi_size = (n + 1) * OSPFS_BLKSIZE;
@@ -870,7 +962,30 @@ remove_block(ospfs_inode_t *oi)
 	}
 	if (need_indirect2) {
 		free_block(oi->oi_indirect2);
+
+		// Crash Testing
+		if (nwrites_to_crash == 0) {
+			return 0;
+		}
+		else if (nwrites_to_crash > 0) {
+			nwrites_to_crash--;
+		}
+		else if (nwrites_to_crash < -1) {
+			-EIO;
+		}
+		
 		oi->oi_indirect2 = 0;
+	}
+
+	// Crash Testing
+	if (nwrites_to_crash == 0) {
+		return 0;
+	}
+	else if (nwrites_to_crash > 0) {
+		nwrites_to_crash--;
+	}
+	else if (nwrites_to_crash < -1) {
+		-EIO;
 	}
 
 	// Update file size.
@@ -944,6 +1059,17 @@ change_size(ospfs_inode_t *oi, uint32_t new_size)
 	             and return the proper value. */
 	// If there were no I/O errors, new_size should be correct.
 	if (r != -EIO) {
+			// Crash Testing
+		if (nwrites_to_crash == 0) {
+			return 0;
+		}
+		else if (nwrites_to_crash > 0) {
+			nwrites_to_crash--;
+		}
+		else if (nwrites_to_crash < -1) {
+			-EIO;
+		}
+		
 		oi->oi_size = new_size;
 	}
 	return r;
@@ -1124,6 +1250,18 @@ ospfs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *
 		if (n > count - amount) {
 			n = count - amount;
 		}
+
+		// Crash Testing
+		if (nwrites_to_crash == 0) {
+			return 0;
+		}
+		else if (nwrites_to_crash > 0) {
+			nwrites_to_crash--;
+		}
+		else if (nwrites_to_crash < -1) {
+			-EIO;
+		}
+
 		if (copy_from_user(data, buffer, n) != 0) {
 			retval = -EFAULT;
 			goto done;
@@ -1214,11 +1352,23 @@ create_blank_direntry(ospfs_inode_t *dir_oi)
 		}
 	}
 
+	// If there's no empty entries, add a block to the directory.
 	int r = add_block(dir_oi);
 	if (r < 0) {
 		return ERR_PTR(r);
 	}
 	
+	// Crash Testing
+	if (nwrites_to_crash == 0) {
+		return 0;
+	}
+	else if (nwrites_to_crash > 0) {
+		nwrites_to_crash--;
+	}
+	else if (nwrites_to_crash < -1) {
+		-EIO;
+	}
+
 	// Assume dir_oi->oi_size was a multiple of OSPFS_BLKSIZE.
 	ospfs_direntry_t *first = ospfs_inode_data(dir_oi, off);
 	memset(first, 0, OSPFS_BLKSIZE);
@@ -1274,8 +1424,33 @@ ospfs_link(struct dentry *src_dentry, struct inode *dir, struct dentry *dst_dent
 		return PTR_ERR(od);
 	}
 
+	// Crash Testing
+	if (nwrites_to_crash == 0) {
+		return 0;
+	}
+	else if (nwrites_to_crash > 0) {
+		nwrites_to_crash--;
+	}
+	else if (nwrites_to_crash < -1) {
+		-EIO;
+	}
+
+	// Increment link count
 	ospfs_inode_t *src_oi = ospfs_inode(src_dentry->d_inode->i_ino);
 	src_oi->oi_nlink++;
+
+	// Crash Testing
+	if (nwrites_to_crash == 0) {
+		return 0;
+	}
+	else if (nwrites_to_crash > 0) {
+		nwrites_to_crash--;
+	}
+	else if (nwrites_to_crash < -1) {
+		-EIO;
+	}
+
+	// Set directory entry's inode number and name
 	od->od_ino = src_dentry->d_inode->i_ino;
 	strcpy(od->od_name, dst_dentry->d_name.name);
 
@@ -1342,10 +1517,35 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 		return -ENOSPC;
 	}
 
+	// Crash Testing
+	if (nwrites_to_crash == 0) {
+		return 0;
+	}
+	else if (nwrites_to_crash > 0) {
+		nwrites_to_crash--;
+	}
+	else if (nwrites_to_crash < -1) {
+		-EIO;
+	}
+
+	// Initialize inode
 	oi->oi_size = 0;
 	oi->oi_ftype = OSPFS_FTYPE_REG;
 	oi->oi_nlink = 1;
 	oi->oi_mode = mode;
+
+	// Crash Testing
+	if (nwrites_to_crash == 0) {
+		return 0;
+	}
+	else if (nwrites_to_crash > 0) {
+		nwrites_to_crash--;
+	}
+	else if (nwrites_to_crash < -1) {
+		-EIO;
+	}
+
+	// Initialize directory entry
 	od->od_ino = entry_ino;
 	strcpy(od->od_name, dentry->d_name.name);
 	
@@ -1360,7 +1560,6 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 		return 0;
 	}
 }
-
 
 // ospfs_symlink(dirino, dentry, symname)
 //   Linux calls this function to create a symbolic link.
@@ -1418,10 +1617,35 @@ ospfs_symlink(struct inode *dir, struct dentry *dentry, const char *symname)
 		return -ENOSPC;
 	}
 
+	// Crash Testing
+	if (nwrites_to_crash == 0) {
+		return 0;
+	}
+	else if (nwrites_to_crash > 0) {
+		nwrites_to_crash--;
+	}
+	else if (nwrites_to_crash < -1) {
+		-EIO;
+	}
+
+	// Initialize inode
 	oi->oi_size = symnamelen;
 	oi->oi_ftype = OSPFS_FTYPE_SYMLINK;
 	oi->oi_nlink = 1;
 	strcpy(oi->oi_symlink, symname);
+
+	// Crash Testing
+	if (nwrites_to_crash == 0) {
+		return 0;
+	}
+	else if (nwrites_to_crash > 0) {
+		nwrites_to_crash--;
+	}
+	else if (nwrites_to_crash < -1) {
+		-EIO;
+	}
+
+	// Initialize directory entry
 	od->od_ino = entry_ino;
 	strcpy(od->od_name, dentry->d_name.name);
 
@@ -1461,7 +1685,6 @@ ospfs_follow_link(struct dentry *dentry, struct nameidata *nd)
 	nd_set_link(nd, oi->oi_symlink);
 	return (void *) 0;
 }
-
 
 // Define the file system operations structures mentioned above.
 
