@@ -2,6 +2,8 @@
 #define OSPFS_H
 // OSPFS Constants and Structure Definitions
 
+#define OSPFS_IOCTL_CRASH   42
+
 /*****************************************************************************
  * BLOCKS
  *
