@@ -793,8 +793,10 @@ add_block(ospfs_inode_t *oi)
 		// Zero out all newly-allocated blocks.
 		int i;
 		for (i = 0; i < 3; i++) {
-			check_crash();
-			memset(ospfs_block(allocated[i]), 0, OSPFS_BLKSIZE);
+			if (allocated[i] > 0) {
+				check_crash();
+				memset(ospfs_block(allocated[i]), 0, OSPFS_BLKSIZE);
+			}
 		}
 
 		// Determine indirect2, the "parent" array of indirect blocks.
@@ -812,6 +814,7 @@ add_block(ospfs_inode_t *oi)
 		// Determine indirect, the "parent" array of direct blocks.
 		if (b >= 0) {
 			if (allocated[1] > 0) {
+				check_crash();
 				indirect2[b] = allocated[1];
 			}
 			// If there is an indirect block, point inside it.
@@ -820,6 +823,7 @@ add_block(ospfs_inode_t *oi)
 			// If not, point to the array of direct blocks in the inode.
 			indirect = &oi->oi_direct[0];
 		}
+		check_crash();
 		// There definitely exists a direct block.
 		indirect[a] = allocated[0];
 
@@ -892,14 +896,15 @@ remove_block(ospfs_inode_t *oi)
 
 	// Always need to free direct block.
 	free_block(indirect[a]);
+	check_crash();
 	indirect[a] = 0;
 	if (need_indirect) {
 		free_block(indirect2[b]);
+		check_crash();
 		indirect2[b] = 0;
 	}
 	if (need_indirect2) {
 		free_block(oi->oi_indirect2);
-
 		check_crash();
 		oi->oi_indirect2 = 0;
 	}
@@ -1367,11 +1372,6 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 	if(dentry->d_name.len > OSPFS_MAXNAMELEN) {
 		return -ENAMETOOLONG;
 	}
-	// Attempt to find/make empty directory entry.
-	ospfs_direntry_t *od = create_blank_direntry(dir_oi);
-	if (IS_ERR(od)) {
-		return PTR_ERR(od);
-	}
 	// Attempt to find empty inode.
 	ospfs_inode_t *oi = NULL;
 	for (entry_ino = 2; entry_ino < ospfs_super->os_ninodes; entry_ino++) {
@@ -1382,6 +1382,11 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 	}
 	if (entry_ino == ospfs_super->os_ninodes) {
 		return -ENOSPC;
+	}
+	// Attempt to find/make empty directory entry.
+	ospfs_direntry_t *od = create_blank_direntry(dir_oi);
+	if (IS_ERR(od)) {
+		return PTR_ERR(od);
 	}
 
 	check_crash();
@@ -1447,11 +1452,6 @@ ospfs_symlink(struct inode *dir, struct dentry *dentry, const char *symname)
 	if(dentry->d_name.len > OSPFS_MAXNAMELEN || symnamelen > OSPFS_MAXSYMLINKLEN) {
 		return -ENAMETOOLONG;
 	}
-	// Attempt to find/make empty directory entry.
-	ospfs_direntry_t *od = create_blank_direntry(dir_oi);
-	if (IS_ERR(od)) {
-		return PTR_ERR(od);
-	}
 	// Attempt to find empty inode.
 	ospfs_symlink_inode_t *oi = NULL;
 	for (entry_ino = 2; entry_ino < ospfs_super->os_ninodes; entry_ino++) {
@@ -1462,6 +1462,11 @@ ospfs_symlink(struct inode *dir, struct dentry *dentry, const char *symname)
 	}
 	if (entry_ino == ospfs_super->os_ninodes) {
 		return -ENOSPC;
+	}
+	// Attempt to find/make empty directory entry.
+	ospfs_direntry_t *od = create_blank_direntry(dir_oi);
+	if (IS_ERR(od)) {
+		return PTR_ERR(od);
 	}
 
 	check_crash();

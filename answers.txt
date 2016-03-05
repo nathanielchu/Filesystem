@@ -24,3 +24,10 @@ Email: nathanielchu4@gmail.com
 #Extra credit problem: none
 
 # Add any other information you'd like us to know below this line.
+The design problem chosen was crash testing. Compile design.c inside QEMU
+(e.g. gcc -o design design.c) and run it (e.g. ./design) to see a
+demonstration of a possible incorrect state. In this case, a file's block
+is deallocated/unassigned, but the filesystem crashes before the file size
+is changed. When the file is read again, the incorrect file size causes
+the filesystem to attempt to access a nonexistent block, resulting in an
+error.
